@@ -66,7 +66,7 @@ curler=$(curl -s -H "accept: application/json" -H "Authorization: Bearer $token"
 Ident=$( /usr/bin/awk '/id/{print $3}' <<< "$curler"  | sed 's/.$//' )
 #room for improvement here as id exists twice within the json structure, but this just makes extra curls in the for loop that won't work
 for alert in $Ident;do
-if [ $alert != -1]; then
+if [[ $alert != -1 ]]; then
 	curl -s -H "Authorization: Bearer $token" -H "accept: application/json" "$server/api/notifications/alerts/PATCH_UPDATE/$alert" -X DELETE
 fi 
 done
