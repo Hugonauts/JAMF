@@ -29,10 +29,9 @@
 #
 # HISTORY
 #.6 adds license info
-#to do for .7: kinit, IDP, check for authchanger plist
-#
-#.8 idea: LaunchAgent?
-#
+#.7 adds kerberos and authchanger plist
+#.8 plan: LaunchAgent
+#.9 plan: clean up the plists for a 1.0 release
 # CAT version 1 created Nov 2021 by Zac Hirschman
 #
 # /\_/\
@@ -44,7 +43,10 @@
 # SYNOPSIS - How to use
 #	
 # Execute the script locally in terminal or deployed via policy from Jamf Pro
-# The output file can be customized in the LOGMEOW variable 
+# The output file location can be customized in the LOGMEOW variable 
+#
+# Results are appended and do not overwrite an existing log file
+#
 ####################################################################################################
 
 #Log file creation
@@ -100,6 +102,12 @@ State_plist=$(su "$currentUser" -c "defaults read com.jamf.connect.state")
 if [[ -z "$State_plist" ]]; then
 State_plist="No user is currently logged in to Menubar"
 fi
+##authchanger plist
+if [ -e /Library/Managed\ Preferences/com.jamf.connect.authchanger.plist ]; then
+Auth_plist=$(defaults read "/Library/Managed Preferences/com.jamf.connect.authchanger.plist")
+else
+Auth_plist="No deployed Authchanger plist"
+fi
 
 #input logs
 Login_log=$(echo /private/tmp/jamf_login.log)
@@ -108,6 +116,8 @@ Menubar_log=$(log show --style compact --predicate 'subsystem == "com.jamf.conne
 #input authchanger
 loginwindow_check=$`security authorizationdb read system.login.console > /dev/null 2>&1 | grep 'loginwindow:login'` 
 
+#input curb rose
+kerblist=$(su "$currentUser" -c "klist > /dev/null 2>&1")
 
 #input versions
 jamfConnectLoginLocation="/Library/Security/SecurityAgentPlugins/JamfConnectLogin.bundle"
@@ -117,7 +127,7 @@ jamfConnectVersion=$(defaults read "$jamfConnectLocation"/Contents/Info.plist "C
 
 #License Input Section - credit Casey Utke
 
-#  input encoded license files
+# input encoded license files
 LicensefromLogin=$(defaults read /Library/Managed\ Preferences/com.jamf.connect.login.plist LicenseFile 2>/dev/null)
 LicensefromMenubar=$(defaults read /Library/Managed\ Preferences/com.jamf.connect.plist LicenseFile 2>/dev/null) 
 if [[ "$LicensefromLogin" == "PD94"* ]]; then
@@ -139,9 +149,9 @@ num=$`echo "$file" | awk '/NumberOfClients/ {getline;print;exit}' | tr -d '<inte
 
 
 #human readable header
-echo "-------------" >> $LOGMEOW
+echo "Begin Cat" >> $LOGMEOW
 echo "CAT Output created on: "`date` >> $LOGMEOW
-echo "====================================================" >> $LOGMEOW
+echo "=============Begin CAT============================" >> $LOGMEOW
 
 #versions
 
@@ -190,14 +200,28 @@ echo "-------------" >> $LOGMEOW
 echo "Menubar Plist" >> $LOGMEOW
 echo "$Menubar_plist" >> $LOGMEOW
 echo "-------------" >> $LOGMEOW
+echo "State Plist" >> $LOGMEOW
+echo "$State_plist" >> $LOGMEOW
+echo "-------------" >> $LOGMEOW
 echo "Actions Plist" >> $LOGMEOW
 echo "$Actions_plist" >> $LOGMEOW
 echo "-------------" >> $LOGMEOW
 echo "Shares Plist" >> $LOGMEOW
 echo "$Shares_plist" >> $LOGMEOW
 echo "-------------" >> $LOGMEOW
-echo "State Plist" >> $LOGMEOW
-echo "$State_plist" >> $LOGMEOW
+echo "Authchanger Plist" >> $LOGMEOW
+echo "$Auth_plist" >> $LOGMEOW
+
+#output klist and krb5.conf files:
+##improvement potential - logic to check for preferences first
+echo "====================================================" >> $LOGMEOW
+echo "Kerberos Ticket List:" >> $LOGMEOW
+echo " $kerblist" >> $LOGMEOW
+if [ -e /etc/krb5.conf ]; then
+echo "krb5.conf file in place" >> $LOGMEOW
+else
+echo "no krb5.conf file in place" >> $LOGMEOW
+
 
 #output logs
 echo "====================================================" >> $LOGMEOW
