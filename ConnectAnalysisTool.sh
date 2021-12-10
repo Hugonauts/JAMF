@@ -221,7 +221,7 @@ if [ -e /etc/krb5.conf ]; then
 echo "krb5.conf file in place" >> $LOGMEOW
 else
 echo "no krb5.conf file in place" >> $LOGMEOW
-
+fi
 
 #output logs
 echo "====================================================" >> $LOGMEOW
