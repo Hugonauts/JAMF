@@ -30,9 +30,9 @@
 # HISTORY
 #.6 adds license info
 #.7 adds kerberos and authchanger plist
-#.8 plan: LaunchAgent
-#.9 plan: clean up the plists for a 1.0 release
-# CAT version 1 created Nov 2021 by Zac Hirschman
+#.8 adds: LaunchAgent detection
+#.9 adds: output formatting
+# CAT version 1 created Nov/Dec 2021 by Zac Hirschman at github dot com slash hirschmanz
 #
 # /\_/\
 #( z z )
@@ -50,18 +50,12 @@
 ####################################################################################################
 
 #Log file creation
-LOGMEOW="/var/log/CAT.txt"
+currentUser=$( /usr/bin/stat -f "%Su" /dev/console )
+serial=$(system_profiler SPHardwareDataType | awk '/Serial/ {print $4}')
+LOGMEOW="/Users/$currentUser/Desktop/CAT-$serial.txt"
 
 if [ ! -e $LOGMEOW ]; then
 touch $LOGMEOW
-fi
-
-#Logic to check for locally preferences in /Library/Preferences, bail out if so
-if [[ ! -e /Library/Preferences/com.jamf.connect.login.plist && ! -e /Library/Preferences/com.jamf.connect.plist ]]; then
-touch $LOGMEOW
-else
-echo "Local Preferences detected in /Library/Preferences. Please remove local preferences and deploy preferences from MDM for use with this tool"
-exit 0
 fi
 
 ###############
@@ -72,58 +66,67 @@ fi
 MacOS_version=$(sw_vers -productVersion)
 
 #Input plists
+###Improvement potential: formatting. tr is a machete, not a scalpel
 ##Login 
 if [ -e /Library/Managed\ Preferences/com.jamf.connect.login.plist ]; then
-Login_plist=$(defaults read "/Library/Managed Preferences/com.jamf.connect.login.plist")
+Login_plist=$(defaults read "/Library/Managed Preferences/com.jamf.connect.login.plist" | sed 's/ =     {/:/' | tr -d "};")
 else
 Login_plist="Login plist not found"
 fi
 ##Menubar 
 if [ -e /Library/Managed\ Preferences/com.jamf.connect.plist ]; then
-Menubar_plist=$(defaults read "/Library/Managed Preferences/com.jamf.connect.plist")
+Menubar_plist=$(defaults read "/Library/Managed Preferences/com.jamf.connect.plist" | sed 's/ =     {/:/' | tr -d "};")
 else
 Menubar_plist="Menubar plist not found"
 fi
 ##Actions
 if [ -e /Library/Managed\ Preferences/com.jamf.connect.actions.plist ]; then
-Actions_plist=$(defaults read "/Library/Managed Preferences/com.jamf.connect.actions.plist")
+Actions_plist=$(defaults read "/Library/Managed Preferences/com.jamf.connect.actions.plist" | sed 's/ =     {/:/' | tr -d "};")
 else
 Actions_plist="No deployed Actions plist"
 fi
 ##Shares
 if [ -e /Library/Managed\ Preferences/com.jamf.connect.shares.plist ]; then
-Shares_plist=$(defaults read "/Library/Managed Preferences/com.jamf.connect.shares.plist")
+Shares_plist=$(defaults read "/Library/Managed Preferences/com.jamf.connect.shares.plist" | sed 's/ =     {/:/' | tr -d "};")
 else
 Shares_plist="No deployed Shares plist"
 fi
 ##state plist
-currentUser=$( /usr/bin/stat -f "%Su" /dev/console )
 State_plist=$(su "$currentUser" -c "defaults read com.jamf.connect.state")
 if [[ -z "$State_plist" ]]; then
 State_plist="No user is currently logged in to Menubar"
 fi
 ##authchanger plist
 if [ -e /Library/Managed\ Preferences/com.jamf.connect.authchanger.plist ]; then
-Auth_plist=$(defaults read "/Library/Managed Preferences/com.jamf.connect.authchanger.plist")
+Auth_plist=$(defaults read "/Library/Managed Preferences/com.jamf.connect.authchanger.plist" | sed 's/ =     {/:/' | tr -d "};")
 else
 Auth_plist="No deployed Authchanger plist"
 fi
+##LaunchAgent
+if [ -e /Library/LaunchAgents/com.jamf.connect.plist ]; then
+Launch_Agent=$(defaults read /Library/LaunchAgents/com.jamf.connect.plist | sed 's/ =     {/:/' | tr -d "};")
+else
+Launch_Agent="No LaunchAgent Detected"
+fi
 
 #input logs
-Login_log=$(echo /private/tmp/jamf_login.log)
+Login_log=$(cat /private/tmp/jamf_login.log /dev/null 2>&1)
 Menubar_log=$(log show --style compact --predicate 'subsystem == "com.jamf.connect"' --debug --last 30m)
 
 #input authchanger
-loginwindow_check=$`security authorizationdb read system.login.console > /dev/null 2>&1 | grep 'loginwindow:login'` 
+loginwindow_check=$`security authorizationdb read system.login.console > /dev/null 2>&1 | grep 'loginwindow:login'`
 
 #input curb rose
-kerblist=$(su "$currentUser" -c "klist > /dev/null 2>&1")
+kerblist=$(su "$currentUser" -c "klist 2>&1")
+if [[ "$kerblist" == "" ]];then
+kerblist="No tickets"
+fi
 
 #input versions
 jamfConnectLoginLocation="/Library/Security/SecurityAgentPlugins/JamfConnectLogin.bundle"
-jamfConnectLoginVersion=$(defaults read "$jamfConnectLoginLocation"/Contents/Info.plist "CFBundleShortVersionString")
+jamfConnectLoginVersion=$(defaults read "$jamfConnectLoginLocation"/Contents/Info.plist "CFBundleShortVersionString" 2>/dev/null)
 jamfConnectLocation="/Applications/Jamf Connect.app"
-jamfConnectVersion=$(defaults read "$jamfConnectLocation"/Contents/Info.plist "CFBundleShortVersionString")
+jamfConnectVersion=$(defaults read "$jamfConnectLocation"/Contents/Info.plist "CFBundleShortVersionString" 2>/dev/null)
 
 #License Input Section - credit Casey Utke
 
@@ -211,11 +214,15 @@ echo "$Shares_plist" >> $LOGMEOW
 echo "-------------" >> $LOGMEOW
 echo "Authchanger Plist" >> $LOGMEOW
 echo "$Auth_plist" >> $LOGMEOW
+echo "-------------" >> $LOGMEOW
+echo "LaunchAgent:" >> $LOGMEOW
+echo "$Launch_Agent" >> $LOGMEOW
+
 
 #output klist and krb5.conf files:
 ##improvement potential - logic to check for preferences first
 echo "====================================================" >> $LOGMEOW
-echo "Kerberos Ticket List:" >> $LOGMEOW
+echo "Kerberos:" >> $LOGMEOW
 echo " $kerblist" >> $LOGMEOW
 if [ -e /etc/krb5.conf ]; then
 echo "krb5.conf file in place" >> $LOGMEOW
