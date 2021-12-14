@@ -31,7 +31,8 @@
 #.6 adds license info
 #.7 adds kerberos and authchanger plist
 #.8 adds: LaunchAgent detection
-#.9 adds: output formatting
+#
+#.9 plan: clean up the plists for a 1.0 release
 # CAT version 1 created Nov/Dec 2021 by Zac Hirschman at github dot com slash hirschmanz
 #
 # /\_/\
@@ -92,7 +93,7 @@ else
 Shares_plist="No deployed Shares plist"
 fi
 ##state plist
-State_plist=$(su "$currentUser" -c "defaults read com.jamf.connect.state")
+State_plist=$(su "$currentUser" -c "defaults read com.jamf.connect.state" 2>/dev/null)
 if [[ -z "$State_plist" ]]; then
 State_plist="No user is currently logged in to Menubar"
 fi
